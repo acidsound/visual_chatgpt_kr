@@ -52,6 +52,7 @@ execute_cmd('ln -s ControlNet/ldm ./ldm')
 execute_cmd('ln -s ControlNet/cldm ./cldm')
 execute_cmd('ln -s ControlNet/annotator ./annotator')
 print(execute_cmd('nvidia-smi'))
+print(execute_cmd('nvcc -V'))
 
 from diffusers import StableDiffusionPipeline
 from diffusers import StableDiffusionInpaintPipeline
