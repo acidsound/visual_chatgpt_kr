@@ -109,9 +109,9 @@ class ConversationBot:
     def __init__(self):
         print("Initializing VisualChatGPT")
         self.llm = OpenAI(temperature=0, openai_api_key="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")
-        self.edit = ImageEditing(device="cuda")
-        self.i2t = ImageCaptioning(device="cuda")
-        self.t2i = T2I(device="cuda")
+        self.edit = ImageEditing(device="cuda:0")
+        self.i2t = ImageCaptioning(device="cuda:0")
+        self.t2i = T2I(device="cuda:0")
         # self.image2canny = image2canny()
         # self.canny2image = canny2image(device="cuda:1")
         # self.image2line = image2line()
@@ -129,7 +129,7 @@ class ConversationBot:
         # self.depth2image = depth2image(device="cuda:7")
         # self.image2normal = image2normal()
         # self.normal2image = normal2image(device="cuda:5")
-        self.pix2pix = Pix2Pix(device="cuda")
+        # self.pix2pix = Pix2Pix(device="cuda:0")
         self.memory = ConversationBufferMemory(memory_key="chat_history", output_key='output')
         self.tools = [
             Tool(name="Get Photo Description", func=self.i2t.inference,
@@ -145,9 +145,9 @@ class ConversationBot:
                  description="useful for when you want to replace an object from the object description or location with another object from its description. "
                              "The input to this tool should be a comma seperated string of three, representing the image_path, the object to be replaced, the object to be replaced with "),
 
-            Tool(name="Instruct Image Using Text", func=self.pix2pix.inference,
-                 description="useful for when you want to the style of the image to be like the text. like: make it look like a painting. or make it like a robot. "
-                             "The input to this tool should be a comma seperated string of two, representing the image_path and the text. "),
+            # Tool(name="Instruct Image Using Text", func=self.pix2pix.inference,
+            #      description="useful for when you want to the style of the image to be like the text. like: make it look like a painting. or make it like a robot. "
+            #                  "The input to this tool should be a comma seperated string of two, representing the image_path and the text. "),
             # Tool(name="Answer Question About The Image", func=self.BLIPVQA.get_answer_from_question_and_image,
             #      description="useful for when you need an answer for a question based on an image. like: what is the background color of the last image, how many cats in this figure, what is in this figure. "
             #                  "The input to this tool should be a comma seperated string of two, representing the image_path and the question"),
