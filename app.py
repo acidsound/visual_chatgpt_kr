@@ -129,7 +129,7 @@ class ConversationBot:
         # self.depth2image = depth2image(device="cuda:7")
         # self.image2normal = image2normal()
         # self.normal2image = normal2image(device="cuda:5")
-        self.pix2pix = Pix2Pix(device="cuda:3")
+        self.pix2pix = Pix2Pix(device="cuda")
         self.memory = ConversationBufferMemory(memory_key="chat_history", output_key='output')
         self.tools = [
             Tool(name="Get Photo Description", func=self.i2t.inference,
