@@ -55,8 +55,15 @@ from langchain.llms.openai import OpenAI
 from langchain.vectorstores import Weaviate
 import re
 import gradio as gr
+import subprocess
 
+def execute_cmd(cmd):
+    output = subprocess.check_output(cmd, shell=True)
+    return output
 
+execute_cmd('ln -s ControlNet/ldm ./ldm')
+execute_cmd('ln -s ControlNet/cldm ./cldm')
+execute_cmd('ln -s ControlNet/annotator ./annotator')
 
 def cut_dialogue_history(history_memory, keep_last_n_words=500):
     tokens = history_memory.split()
