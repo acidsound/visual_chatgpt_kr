@@ -24,7 +24,7 @@ prettytable==3.6.0
 safetensors==0.2.7
 basicsr==1.4.2
 langchain==0.0.101
-diffusers
+diffusers==0.14.0
 gradio
 openai
 accelerate

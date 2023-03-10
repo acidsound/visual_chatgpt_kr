@@ -42,6 +42,9 @@ Since Visual ChatGPT is a text language model, Visual ChatGPT must use tools to 
 The thoughts and observations are only visible for Visual ChatGPT, Visual ChatGPT should remember to repeat important information in the final response for Human. 
 Thought: Do I need to use a tool? {agent_scratchpad}"""
 
+from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionInpaintPipeline
+from diffusers import StableDiffusionInstructPix2PixPipeline, EulerAncestralDiscreteScheduler
 from visual_foundation_models import *
 from omegaconf import OmegaConf
 from ldm.util import instantiate_from_config
