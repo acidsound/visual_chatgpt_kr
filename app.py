@@ -1,5 +1,3 @@
-import os
-
 VISUAL_CHATGPT_PREFIX = """Visual ChatGPT is designed to be able to assist with a wide range of text and visual related tasks, from answering simple questions to providing in-depth explanations and discussions on a wide range of topics. Visual ChatGPT is able to generate human-like text based on the input it receives, allowing it to engage in natural-sounding conversations and provide responses that are coherent and relevant to the topic at hand.
 
 Visual ChatGPT is able to process and understand large amounts of text and image. As a language model, Visual ChatGPT can not directly read images, but it has a list of tools to finish different visual tasks. Each image will have a file name formed as "image/xxx.png", and Visual ChatGPT can invoke different tools to indirectly understand pictures. When talking about images, Visual ChatGPT is very strict to the file name and will never fabricate nonexistent files. When using tools to generate new image files, Visual ChatGPT is also known that the image may not be the same as user's demand, and will use other visual question answering tools or description tools to observe the real image. Visual ChatGPT is able to use tools in a sequence, and is  loyal to the tool observation outputs rather than faking the image content and image file name. It will remember to provide the file name from the last tool observation, if a new image is generated.
@@ -53,12 +51,7 @@ def execute_cmd(cmd):
 execute_cmd('ln -s ControlNet/ldm ./ldm')
 execute_cmd('ln -s ControlNet/cldm ./cldm')
 execute_cmd('ln -s ControlNet/annotator ./annotator')
-
-# prepare the folder to store images
-try:
-    os.mkdir('./image')
-except OSError as error:
-    print(error)
+print(execute_cmd('nvidia-smi'))
 
 from diffusers import StableDiffusionPipeline
 from diffusers import StableDiffusionInpaintPipeline
@@ -74,6 +67,10 @@ from langchain.vectorstores import Weaviate
 import re
 import gradio as gr
 
+try:
+    os.mkdir('./image')
+except OSError as error:
+    print(error)
 
 def cut_dialogue_history(history_memory, keep_last_n_words=500):
     tokens = history_memory.split()
