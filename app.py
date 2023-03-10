@@ -57,13 +57,6 @@ import re
 import gradio as gr
 
 
-def set_openai_api_key(api_key, agent):
-    if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
-        vectorstore = get_weaviate_store()
-        qa_chain = get_new_chain1(vectorstore)
-        os.environ["OPENAI_API_KEY"] = ""
-        return qa_chain
 
 def cut_dialogue_history(history_memory, keep_last_n_words=500):
     tokens = history_memory.split()
@@ -106,26 +99,26 @@ def create_model(config_path, device):
 class ConversationBot:
     def __init__(self):
         print("Initializing VisualChatGPT")
-        self.llm = OpenAI(temperature=0)
+        self.llm = OpenAI(temperature=0, openai_api_key="")
         self.edit = ImageEditing(device="cuda:6")
         self.i2t = ImageCaptioning(device="cuda:4")
         self.t2i = T2I(device="cuda:1")
-        self.image2canny = image2canny()
-        self.canny2image = canny2image(device="cuda:1")
-        self.image2line = image2line()
-        self.line2image = line2image(device="cuda:1")
-        self.image2hed = image2hed()
-        self.hed2image = hed2image(device="cuda:2")
-        self.image2scribble = image2scribble()
-        self.scribble2image = scribble2image(device="cuda:3")
-        self.image2pose = image2pose()
-        self.pose2image = pose2image(device="cuda:3")
-        self.BLIPVQA = BLIPVQA(device="cuda:4")
-        self.image2seg = image2seg()
-        self.seg2image = seg2image(device="cuda:7")
-        self.image2depth = image2depth()
-        self.depth2image = depth2image(device="cuda:7")
-        self.image2normal = image2normal()
+        # self.image2canny = image2canny()
+        # self.canny2image = canny2image(device="cuda:1")
+        # self.image2line = image2line()
+        # self.line2image = line2image(device="cuda:1")
+        # self.image2hed = image2hed()
+        # self.hed2image = hed2image(device="cuda:2")
+        # self.image2scribble = image2scribble()
+        # self.scribble2image = scribble2image(device="cuda:3")
+        # self.image2pose = image2pose()
+        # self.pose2image = pose2image(device="cuda:3")
+        # self.BLIPVQA = BLIPVQA(device="cuda:4")
+        # self.image2seg = image2seg()
+        # self.seg2image = seg2image(device="cuda:7")
+        # self.image2depth = image2depth()
+        # self.depth2image = depth2image(device="cuda:7")
+        # self.image2normal = image2normal()
         self.normal2image = normal2image(device="cuda:5")
         self.pix2pix = Pix2Pix(device="cuda:3")
         self.memory = ConversationBufferMemory(memory_key="chat_history", output_key='output')
@@ -274,10 +267,5 @@ with gr.Blocks(css="#chatbot .overflow-y-auto{height:500px}") as demo:
     clear.click(lambda: [], None, chatbot)
     clear.click(lambda: [], None, state)
 
-    openai_api_key_textbox.change(
-        set_openai_api_key,
-        inputs=[openai_api_key_textbox, agent_state],
-        outputs=[agent_state],
-    )
 
     demo.launch(server_name="0.0.0.0", server_port=7860)
