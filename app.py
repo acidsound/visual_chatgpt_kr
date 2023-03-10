@@ -128,7 +128,7 @@ class ConversationBot:
         # self.image2depth = image2depth()
         # self.depth2image = depth2image(device="cuda:7")
         # self.image2normal = image2normal()
-        self.normal2image = normal2image(device="cuda:5")
+        # self.normal2image = normal2image(device="cuda:5")
         self.pix2pix = Pix2Pix(device="cuda:3")
         self.memory = ConversationBufferMemory(memory_key="chat_history", output_key='output')
         self.tools = [
