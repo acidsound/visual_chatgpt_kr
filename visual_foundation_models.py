@@ -10,9 +10,9 @@ from controlnet_aux import OpenposeDetector, MLSDdetector, HEDdetector
 from transformers import AutoModelForCausalLM, AutoTokenizer, CLIPSegProcessor, CLIPSegForImageSegmentation
 from transformers import pipeline, BlipProcessor, BlipForConditionalGeneration, BlipForQuestionAnswering
 from transformers import AutoImageProcessor, UperNetForSemanticSegmentation
-from ldm.util import instantiate_from_config
-from ControlNet.cldm.model import create_model, load_state_dict
-from ControlNet.cldm.ddim_hacked import DDIMSampler
+# from ldm.util import instantiate_from_config
+# from ControlNet.cldm.model import create_model, load_state_dict
+# from ControlNet.cldm.ddim_hacked import DDIMSampler
 # from ControlNet.annotator.canny import CannyDetector
 # from ControlNet.annotator.mlsd import MLSDdetector
 # from ControlNet.annotator.hed import HEDdetector, nms
