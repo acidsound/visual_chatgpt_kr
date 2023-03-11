@@ -107,7 +107,7 @@ def get_new_image_name(org_img_name, func_name="update"):
 class MaskFormer:
     def __init__(self, device):
         self.device = device
-        self.processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
+        self.processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined", torch_dtype=torch.float16)
         self.model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined", torch_dtype=torch.float16).to(device)
 
     def inference(self, image_path, text):
