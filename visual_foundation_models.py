@@ -1,19 +1,22 @@
 import os
+
+import diffusers.utils
 from diffusers import StableDiffusionPipeline
 from diffusers import StableDiffusionInpaintPipeline
 from diffusers import StableDiffusionInstructPix2PixPipeline, EulerAncestralDiscreteScheduler
+from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
+from controlnet_aux import OpenposeDetector, MLSDdetector, HEDdetector
 from transformers import AutoModelForCausalLM, AutoTokenizer, CLIPSegProcessor, CLIPSegForImageSegmentation
 from transformers import pipeline, BlipProcessor, BlipForConditionalGeneration, BlipForQuestionAnswering
 from ldm.util import instantiate_from_config
 from ControlNet.cldm.model import create_model, load_state_dict
 from ControlNet.cldm.ddim_hacked import DDIMSampler
-from ControlNet.annotator.canny import CannyDetector
-from ControlNet.annotator.mlsd import MLSDdetector
-from ControlNet.annotator.util import HWC3, resize_image
-from ControlNet.annotator.hed import HEDdetector, nms
-from ControlNet.annotator.openpose import OpenposeDetector
-from ControlNet.annotator.uniformer import UniformerDetector
-from ControlNet.annotator.midas import MidasDetector
+# from ControlNet.annotator.canny import CannyDetector
+# from ControlNet.annotator.mlsd import MLSDdetector
+# from ControlNet.annotator.hed import HEDdetector, nms
+# from ControlNet.annotator.openpose import OpenposeDetector
+# from ControlNet.annotator.uniformer import UniformerDetector
+# from ControlNet.annotator.midas import MidasDetector
 from PIL import Image
 import torch
 import numpy as np
@@ -22,6 +25,36 @@ import einops
 from pytorch_lightning import seed_everything
 import cv2
 import random
+
+def HWC3(x):
+    assert x.dtype == np.uint8
+    if x.ndim == 2:
+        x = x[:, :, None]
+    assert x.ndim == 3
+    H, W, C = x.shape
+    assert C == 1 or C == 3 or C == 4
+    if C == 3:
+        return x
+    if C == 1:
+        return np.concatenate([x, x, x], axis=2)
+    if C == 4:
+        color = x[:, :, 0:3].astype(np.float32)
+        alpha = x[:, :, 3:4].astype(np.float32) / 255.0
+        y = color * alpha + 255.0 * (1.0 - alpha)
+        y = y.clip(0, 255).astype(np.uint8)
+        return y
+
+def resize_image(input_image, resolution):
+    H, W, C = input_image.shape
+    H = float(H)
+    W = float(W)
+    k = float(resolution) / min(H, W)
+    H *= k
+    W *= k
+    H = int(np.round(H / 64.0)) * 64
+    W = int(np.round(W / 64.0)) * 64
+    img = cv2.resize(input_image, (W, H), interpolation=cv2.INTER_LANCZOS4 if k > 1 else cv2.INTER_AREA)
+    return img
 
 def get_new_image_name(org_img_name, func_name="update"):
     head_tail = os.path.split(org_img_name)
@@ -139,40 +172,41 @@ class ImageCaptioning:
         captions = self.processor.decode(out[0], skip_special_tokens=True)
         return captions
 
-class image2canny:
+class image2canny_new:
     def __init__(self):
         print("Direct detect canny.")
-        self.detector = CannyDetector()
-        self.low_thresh = 100
-        self.high_thresh = 200
+        self.low_threshold = 100
+        self.high_threshold = 200
 
     def inference(self, inputs):
         print("===>Starting image2canny Inference")
         image = Image.open(inputs)
         image = np.array(image)
-        canny = self.detector(image, self.low_thresh, self.high_thresh)
+        canny = cv2.Canny(image, self.low_threshold, self.high_threshold)
+        canny = canny[:, :, None]
+        canny = np.concatenate([canny, canny, canny], axis=2)
         canny = 255 - canny
-        image = Image.fromarray(canny)
+        canny = Image.fromarray(canny)
         updated_image_path = get_new_image_name(inputs, func_name="edge")
-        image.save(updated_image_path)
+        canny.save(updated_image_path)
         return updated_image_path
 
-class canny2image:
+class canny2image_new:
     def __init__(self, device):
-        print("Initialize the canny2image model.")
-        model = create_model('ControlNet/models/cldm_v15.yaml', device=device).to(device)
-        model.load_state_dict(load_state_dict('ControlNet/models/control_sd15_canny.pth', location='cpu'))
-        self.model = model.to(device)
-        self.device = device
-        self.ddim_sampler = DDIMSampler(self.model)
-        self.ddim_steps = 20
+        self.controlnet = ControlNetModel.from_pretrained(
+            "fusing/stable-diffusion-v1-5-controlnet-canny"
+        )
+
+        self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None
+        )
+
+        self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
+        self.pipe.to(device)
         self.image_resolution = 512
-        self.num_samples = 1
-        self.save_memory = False
-        self.strength = 1.0
-        self.guess_mode = False
-        self.scale = 9.0
+        self.num_inference_steps = 20
         self.seed = -1
+        self.unconditional_guidance_scale = 9.0
         self.a_prompt = 'best quality, extremely detailed'
         self.n_prompt = 'longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality'
 
@@ -184,27 +218,142 @@ class canny2image:
         image = 255 - image
         prompt = instruct_text
         img = resize_image(HWC3(image), self.image_resolution)
-        H, W, C = img.shape
-        control = torch.from_numpy(img.copy()).float().to(device=self.device) / 255.0
-        control = torch.stack([control for _ in range(self.num_samples)], dim=0)
-        control = einops.rearrange(control, 'b h w c -> b c h w').clone()
+        img = Image.fromarray(img)
+
         self.seed = random.randint(0, 65535)
         seed_everything(self.seed)
-        if self.save_memory:
-            self.model.low_vram_shift(is_diffusing=False)
-        cond = {"c_concat": [control], "c_crossattn": [self.model.get_learned_conditioning([prompt + ', ' + self.a_prompt] * self.num_samples)]}
-        un_cond = {"c_concat": None if self.guess_mode else [control], "c_crossattn": [self.model.get_learned_conditioning([self.n_prompt] * self.num_samples)]}
-        shape = (4, H // 8, W // 8)
-        self.model.control_scales = [self.strength * (0.825 ** float(12 - i)) for i in range(13)] if self.guess_mode else ([self.strength] * 13)  # Magic number. IDK why. Perhaps because 0.825**12<0.01 but 0.826**12>0.01
-        samples, intermediates = self.ddim_sampler.sample(self.ddim_steps, self.num_samples, shape, cond, verbose=False, eta=0., unconditional_guidance_scale=self.scale, unconditional_conditioning=un_cond)
-        if self.save_memory:
-            self.model.low_vram_shift(is_diffusing=False)
-        x_samples = self.model.decode_first_stage(samples)
-        x_samples = (einops.rearrange(x_samples, 'b c h w -> b h w c') * 127.5 + 127.5).cpu().numpy().clip(0, 255).astype(np.uint8)
+        prompt = prompt + ', ' + self.a_prompt
+        image = self.pipe(prompt, img, num_inference_steps=self.num_inference_steps, eta=0.0, negative_prompt=self.n_prompt, guidance_scale=self.unconditional_guidance_scale).images[0]
         updated_image_path = get_new_image_name(image_path, func_name="canny2image")
-        real_image = Image.fromarray(x_samples[0])  # get default the index0 image
-        real_image.save(updated_image_path)
+        image.save(updated_image_path)
         return updated_image_path
+
+
+# class image2canny:
+#     def __init__(self):
+#         print("Direct detect canny.")
+#         self.detector = CannyDetector()
+#         self.low_thresh = 100
+#         self.high_thresh = 200
+#
+#     def inference(self, inputs):
+#         print("===>Starting image2canny Inference")
+#         image = Image.open(inputs)
+#         image = np.array(image)
+#         canny = self.detector(image, self.low_thresh, self.high_thresh)
+#         canny = 255 - canny
+#         image = Image.fromarray(canny)
+#         updated_image_path = get_new_image_name(inputs, func_name="edge")
+#         image.save(updated_image_path)
+#         return updated_image_path
+#
+# class canny2image:
+#     def __init__(self, device):
+#         print("Initialize the canny2image model.")
+#         model = create_model('ControlNet/models/cldm_v15.yaml', device=device).to(device)
+#         model.load_state_dict(load_state_dict('ControlNet/models/control_sd15_canny.pth', location='cpu'))
+#         self.model = model.to(device)
+#         self.device = device
+#         self.ddim_sampler = DDIMSampler(self.model)
+#         self.ddim_steps = 20
+#         self.image_resolution = 512
+#         self.num_samples = 1
+#         self.save_memory = False
+#         self.strength = 1.0
+#         self.guess_mode = False
+#         self.scale = 9.0
+#         self.seed = -1
+#         self.a_prompt = 'best quality, extremely detailed'
+#         self.n_prompt = 'longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality'
+#
+#     def inference(self, inputs):
+#         print("===>Starting canny2image Inference")
+#         image_path, instruct_text = inputs.split(",")[0], ','.join(inputs.split(',')[1:])
+#         image = Image.open(image_path)
+#         image = np.array(image)
+#         image = 255 - image
+#         prompt = instruct_text
+#         img = resize_image(HWC3(image), self.image_resolution)
+#         H, W, C = img.shape
+#         control = torch.from_numpy(img.copy()).float().to(device=self.device) / 255.0
+#         control = torch.stack([control for _ in range(self.num_samples)], dim=0)
+#         control = einops.rearrange(control, 'b h w c -> b c h w').clone()
+#         self.seed = random.randint(0, 65535)
+#         seed_everything(self.seed)
+#         if self.save_memory:
+#             self.model.low_vram_shift(is_diffusing=False)
+#         cond = {"c_concat": [control], "c_crossattn": [self.model.get_learned_conditioning([prompt + ', ' + self.a_prompt] * self.num_samples)]}
+#         un_cond = {"c_concat": None if self.guess_mode else [control], "c_crossattn": [self.model.get_learned_conditioning([self.n_prompt] * self.num_samples)]}
+#         shape = (4, H // 8, W // 8)
+#         self.model.control_scales = [self.strength * (0.825 ** float(12 - i)) for i in range(13)] if self.guess_mode else ([self.strength] * 13)  # Magic number. IDK why. Perhaps because 0.825**12<0.01 but 0.826**12>0.01
+#         samples, intermediates = self.ddim_sampler.sample(self.ddim_steps, self.num_samples, shape, cond, verbose=False, eta=0., unconditional_guidance_scale=self.scale, unconditional_conditioning=un_cond)
+#         if self.save_memory:
+#             self.model.low_vram_shift(is_diffusing=False)
+#         x_samples = self.model.decode_first_stage(samples)
+#         x_samples = (einops.rearrange(x_samples, 'b c h w -> b h w c') * 127.5 + 127.5).cpu().numpy().clip(0, 255).astype(np.uint8)
+#         updated_image_path = get_new_image_name(image_path, func_name="canny2image")
+#         real_image = Image.fromarray(x_samples[0])  # get default the index0 image
+#         real_image.save(updated_image_path)
+#         return updated_image_path
+class image2line_new:
+    def __init__(self):
+        self.detector = MLSDdetector.from_pretrained('lllyasviel/ControlNet')
+        self.value_thresh = 0.1
+        self.dis_thresh = 0.1
+        self.resolution = 512
+
+    def inference(self, inputs):
+        print("===>Starting image2line Inference")
+        image = Image.open(inputs)
+        image = np.array(image)
+        image = HWC3(image)
+        mlsd = self.detector(resize_image(image, self.resolution), thr_v=self.value_thresh, thr_d=self.dis_thresh)
+        mlsd = np.array(mlsd)
+        mlsd = 255 - mlsd
+        mlsd = Image.fromarray(mlsd)
+        updated_image_path = get_new_image_name(inputs, func_name="line-of")
+        mlsd.save(updated_image_path)
+        return updated_image_path
+
+class line2image_new:
+    def __init__(self, device):
+        print("Initialize the line2image model...")
+        self.controlnet = ControlNetModel.from_pretrained(
+            "fusing/stable-diffusion-v1-5-controlnet-mlsd"
+        )
+
+        self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None
+        )
+
+        self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
+        self.pipe.to(device)
+        self.image_resolution = 512
+        self.num_inference_steps = 20
+        self.seed = -1
+        self.unconditional_guidance_scale = 9.0
+        self.a_prompt = 'best quality, extremely detailed'
+        self.n_prompt = 'longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality'
+
+    def inference(self, inputs):
+        print("===>Starting line2image Inference")
+        image_path, instruct_text = inputs.split(",")[0], ','.join(inputs.split(',')[1:])
+        image = Image.open(image_path)
+        image = np.array(image)
+        image = 255 - image
+        prompt = instruct_text
+        img = resize_image(HWC3(image), self.image_resolution)
+        img = Image.fromarray(img)
+
+        self.seed = random.randint(0, 65535)
+        seed_everything(self.seed)
+
+        prompt = prompt + ', ' + self.a_prompt
+        image = self.pipe(prompt, img, num_inference_steps=self.num_inference_steps, eta=0.0, negative_prompt=self.n_prompt, guidance_scale=self.unconditional_guidance_scale).images[0]
+        updated_image_path = get_new_image_name(image_path, func_name="line2image")
+        image.save(updated_image_path)
+        return updated_image_path
+
 
 class image2line:
     def __init__(self):

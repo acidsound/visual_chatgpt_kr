@@ -28,3 +28,4 @@ diffusers==0.14.0
 gradio
 openai
 accelerate
+controlnet-aux==0.0.1
