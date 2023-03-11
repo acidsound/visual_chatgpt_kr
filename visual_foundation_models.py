@@ -108,7 +108,7 @@ class MaskFormer:
     def __init__(self, device):
         self.device = device
         self.processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
-        self.model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined").to(device)
+        self.model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined", torch_dtype=torch.float16).to(device)
 
     def inference(self, image_path, text):
         threshold = 0.5
@@ -137,7 +137,7 @@ class ImageEditing:
         print("Initializing StableDiffusionInpaint to %s" % device)
         self.device = device
         self.mask_former = MaskFormer(device=self.device)
-        self.inpainting = StableDiffusionInpaintPipeline.from_pretrained(        "runwayml/stable-diffusion-inpainting",).to(device)
+        self.inpainting = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16).to(device)
 
     def remove_part_of_image(self, input):
         image_path, to_be_removed_txt = input.split(",")
@@ -177,8 +177,8 @@ class T2I:
         self.device = device
         self.pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
         self.text_refine_tokenizer = AutoTokenizer.from_pretrained("Gustavosta/MagicPrompt-Stable-Diffusion")
-        self.text_refine_model = AutoModelForCausalLM.from_pretrained("Gustavosta/MagicPrompt-Stable-Diffusion")
-        self.text_refine_gpt2_pipe = pipeline("text-generation", model=self.text_refine_model, tokenizer=self.text_refine_tokenizer, device=self.device)
+        self.text_refine_model = AutoModelForCausalLM.from_pretrained("Gustavosta/MagicPrompt-Stable-Diffusion", torch_dtype=torch.float16)
+        self.text_refine_gpt2_pipe = pipeline("text-generation", model=self.text_refine_model, tokenizer=self.text_refine_tokenizer, device=self.device, torch_dtype=torch.float16)
         self.pipe.to(device)
 
     def inference(self, text):
@@ -194,8 +194,8 @@ class ImageCaptioning:
     def __init__(self, device):
         print("Initializing ImageCaptioning to %s" % device)
         self.device = device
-        self.processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-        self.model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base").to(self.device)
+        self.processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base", torch_dtype=torch.float16)
+        self.model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base", torch_dtype=torch.float16).to(self.device)
 
     def inference(self, image_path):
         inputs = self.processor(Image.open(image_path), return_tensors="pt").to(self.device)
@@ -225,11 +225,11 @@ class image2canny_new:
 class canny2image_new:
     def __init__(self, device):
         self.controlnet = ControlNetModel.from_pretrained(
-            "fusing/stable-diffusion-v1-5-controlnet-canny"
+            "fusing/stable-diffusion-v1-5-controlnet-canny", torch_dtype=torch.float16
         )
 
         self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None, torch_dtype=torch.float16
         )
 
         self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
