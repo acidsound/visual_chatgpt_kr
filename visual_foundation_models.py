@@ -1,6 +1,3 @@
-import os
-
-import diffusers.utils
 from diffusers import StableDiffusionPipeline
 from diffusers import StableDiffusionInpaintPipeline
 from diffusers import StableDiffusionInstructPix2PixPipeline, EulerAncestralDiscreteScheduler
@@ -10,23 +7,15 @@ from controlnet_aux import OpenposeDetector, MLSDdetector, HEDdetector
 from transformers import AutoModelForCausalLM, AutoTokenizer, CLIPSegProcessor, CLIPSegForImageSegmentation
 from transformers import pipeline, BlipProcessor, BlipForConditionalGeneration, BlipForQuestionAnswering
 from transformers import AutoImageProcessor, UperNetForSemanticSegmentation
-# from ldm.util import instantiate_from_config
-# from ControlNet.cldm.model import create_model, load_state_dict
-# from ControlNet.cldm.ddim_hacked import DDIMSampler
-# from ControlNet.annotator.canny import CannyDetector
-# from ControlNet.annotator.mlsd import MLSDdetector
-# from ControlNet.annotator.hed import HEDdetector, nms
-# from ControlNet.annotator.openpose import OpenposeDetector
-# from ControlNet.annotator.uniformer import UniformerDetector
-# from ControlNet.annotator.midas import MidasDetector
+
 from PIL import Image
 import torch
 import numpy as np
 import uuid
-import einops
 from pytorch_lightning import seed_everything
 import cv2
 import random
+import os
 
 def ade_palette():
     return [[120, 120, 120], [180, 120, 120], [6, 230, 230], [80, 50, 50],
