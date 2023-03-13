@@ -1,6 +1,6 @@
 ---
 title: Visual Chatgpt
-emoji: 🐢
+emoji: 🎨
 colorFrom: yellow
 colorTo: yellow
 sdk: gradio

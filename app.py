@@ -47,12 +47,11 @@ from langchain.agents.initialize import initialize_agent
 from langchain.agents.tools import Tool
 from langchain.chains.conversation.memory import ConversationBufferMemory
 from langchain.llms.openai import OpenAI
-from langchain.vectorstores import Weaviate
 import re
 import gradio as gr
 
 
-def cut_dialogue_history(history_memory, keep_last_n_words=500):
+def cut_dialogue_history(history_memory, keep_last_n_words=400):
     tokens = history_memory.split()
     n_tokens = len(tokens)
     print(f"hitory_memory:{history_memory}, n_tokens: {n_tokens}")
@@ -73,24 +72,24 @@ class ConversationBot:
         self.edit = ImageEditing(device="cuda:0")
         self.i2t = ImageCaptioning(device="cuda:0")
         self.t2i = T2I(device="cuda:0")
-        self.image2canny = image2canny_new()
-        self.canny2image = canny2image_new(device="cuda:0")
-        # self.image2line = image2line_new()
-        # self.line2image = line2image_new(device="cuda:0")
-        # self.image2hed = image2hed_new()
-        # self.hed2image = hed2image_new(device="cuda:0")
-        # self.image2scribble = image2scribble_new()
-        # self.scribble2image = scribble2image_new(device="cuda:0")
-        # self.image2pose = image2pose_new()
-        # self.pose2image = pose2image_new(device="cuda:0")
         self.BLIPVQA = BLIPVQA(device="cuda:0")
+        self.pix2pix = Pix2Pix(device="cuda:0")
+        self.image2canny = image2canny()
+        self.canny2image = canny2image(device="cuda:0")
+        # self.image2line = image2line()
+        # self.line2image = line2image(device="cuda:0")
+        # self.image2hed = image2hed()
+        # self.hed2image = hed2image(device="cuda:0")
+        # self.image2scribble = image2scribble()
+        # self.scribble2image = scribble2image(device="cuda:0")
+        # self.image2pose = image2pose()
+        # self.pose2image = pose2image(device="cuda:0")
         # self.image2seg = image2seg_new()
         # self.seg2image = seg2image_new(device="cuda:0")
         # self.image2depth = image2depth_new()
         # self.depth2image = depth2image_new(device="cuda:0")
         # self.image2normal = image2normal_new()
         # self.normal2image = normal2image_new(device="cuda:0")
-        self.pix2pix = Pix2Pix(device="cuda:0")
         self.memory = ConversationBufferMemory(memory_key="chat_history", output_key='output')
         self.tools = [
             Tool(name="Get Photo Description", func=self.i2t.inference,
@@ -178,7 +177,7 @@ class ConversationBot:
         print("===============Running run_text =============")
         print("Inputs:", text, state)
         print("======>Previous memory:\n %s" % self.agent.memory)
-        self.agent.memory.buffer = cut_dialogue_history(self.agent.memory.buffer, keep_last_n_words=500)
+        self.agent.memory.buffer = cut_dialogue_history(self.agent.memory.buffer, keep_last_n_words=400)
         res = self.agent({"input": text})
         print("======>Current memory:\n %s" % self.agent.memory)
         response = re.sub('(image/\S*png)', lambda m: f'![](/file={m.group(0)})*{m.group(0)}*', res['output'])
@@ -215,8 +214,9 @@ with gr.Blocks(css="#chatbot .overflow-y-auto{height:500px}") as demo:
     with gr.Row():
         gr.Markdown("<h3><center>Visual ChatGPT</center></h3>")
 
+    with gr.Row():
         openai_api_key_textbox = gr.Textbox(
-            placeholder="Paste your OpenAI API key (sk-...)",
+            placeholder="Paste your OpenAI API key here to start Visual ChatGPT(sk-...)",
             show_label=False,
             lines=1,
             type="password",
@@ -233,15 +233,25 @@ with gr.Blocks(css="#chatbot .overflow-y-auto{height:500px}") as demo:
         with gr.Column(scale=0.15, min_width=0):
             btn = gr.UploadButton("Upload", file_types=["image"])
 
+    gr.Examples(
+        examples=["Generate a figure of a lovely cat",
+                  "Replace the cat with a lovely dog",
+                  "Remove the cat in this image",
+                  "Can you detect the canny edge of this image?",
+                  "Can you use this canny image to generate a oil painting of a lovely dog",
+                  "Make it like water-color painting",
+                  "What is the background color"
+                  "Describe this image"],
+        inputs=txt
+    )
+
+
     openai_api_key_textbox.submit(bot.init_agent, [openai_api_key_textbox], [input_raws])
     txt.submit(bot.run_text, [txt, state], [chatbot, state])
     txt.submit(lambda: "", None, txt)
-
     btn.upload(bot.run_image, [btn, state, txt], [chatbot, state, txt])
-
     clear.click(bot.memory.clear)
     clear.click(lambda: [], None, chatbot)
     clear.click(lambda: [], None, state)
-
 
     demo.launch(server_name="0.0.0.0", server_port=7860)
