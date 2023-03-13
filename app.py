@@ -174,7 +174,7 @@ with gr.Blocks(css="#chatbot .overflow-y-auto{height:500px}") as demo:
                   "Can you detect the canny edge of this image?",
                   "Can you use this canny image to generate a oil painting of a lovely dog",
                   "Make it like water-color painting",
-                  "What is the background color"
+                  "What is the background color",
                   "Describe this image"],
         inputs=txt
     )
