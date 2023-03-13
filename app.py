@@ -70,7 +70,6 @@ def cut_dialogue_history(history_memory, keep_last_n_words=500):
 class ConversationBot:
     def __init__(self):
         print("Initializing VisualChatGPT")
-        self.llm = OpenAI(temperature=0, openai_api_key="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")
         self.edit = ImageEditing(device="cuda:0")
         self.i2t = ImageCaptioning(device="cuda:0")
         self.t2i = T2I(device="cuda:0")
@@ -161,6 +160,9 @@ class ConversationBot:
             #      description="useful for when you want to generate a new real image from both the user desciption and a human pose image. like: generate a real image of a human from this human pose image, or generate a new real image of a human from this pose. "
             #                  "The input to this tool should be a comma seperated string of two, representing the image_path and the user description")
             ]
+
+    def init_agent(self, openai_api_key):
+        self.llm = OpenAI(temperature=0, openai_api_key=openai_api_key)
         self.agent = initialize_agent(
             self.tools,
             self.llm,
@@ -169,6 +171,8 @@ class ConversationBot:
             memory=self.memory,
             return_intermediate_steps=True,
             agent_kwargs={'prefix': VISUAL_CHATGPT_PREFIX, 'format_instructions': VISUAL_CHATGPT_FORMAT_INSTRUCTIONS, 'suffix': VISUAL_CHATGPT_SUFFIX}, )
+
+        return gr.update(visible = True)
 
     def run_text(self, text, state):
         print("===============Running run_text =============")
@@ -221,7 +225,7 @@ with gr.Blocks(css="#chatbot .overflow-y-auto{height:500px}") as demo:
     chatbot = gr.Chatbot(elem_id="chatbot", label="Visual ChatGPT")
     state = gr.State([])
 
-    with gr.Row():
+    with gr.Row(visible=False) as input_raws:
         with gr.Column(scale=0.7):
             txt = gr.Textbox(show_label=False, placeholder="Enter text and press enter, or upload an image").style(container=False)
         with gr.Column(scale=0.15, min_width=0):
@@ -229,6 +233,7 @@ with gr.Blocks(css="#chatbot .overflow-y-auto{height:500px}") as demo:
         with gr.Column(scale=0.15, min_width=0):
             btn = gr.UploadButton("Upload", file_types=["image"])
 
+    openai_api_key_textbox.submit(bot.init_agent, [openai_api_key_textbox], [input_raws])
     txt.submit(bot.run_text, [txt, state], [chatbot, state])
     txt.submit(lambda: "", None, txt)
 
