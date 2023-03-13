@@ -77,7 +77,7 @@ class ImageEditing:
         print("Initializing ImageEditing to %s" % device)
         self.device = device
         self.mask_former = MaskFormer(device=self.device)
-        self.inpaint = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting").to(device)
+        self.inpaint = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting", revision="fp16", torch_dtype=torch.float16).to(device)
 
     @prompts(name="Remove Something From The Photo",
              description="useful when you want to remove and object or something from the photo "
@@ -113,7 +113,7 @@ class InstructPix2Pix:
     def __init__(self, device):
         print("Initializing InstructPix2Pix to %s" % device)
         self.device = device
-        self.pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained("timbrooks/instruct-pix2pix",
+        self.pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained("timbrooks/instruct-pix2pix", torch_dtype=torch.float16,
                                                                            safety_checker=None).to(device)
         self.pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(self.pipe.scheduler.config)
 
@@ -139,7 +139,7 @@ class Text2Image:
     def __init__(self, device):
         print("Initializing Text2Image to %s" % device)
         self.device = device
-        self.pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        self.pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5",torch_dtype=torch.float16)
         self.text_refine_tokenizer = AutoTokenizer.from_pretrained("Gustavosta/MagicPrompt-Stable-Diffusion")
         self.text_refine_model = AutoModelForCausalLM.from_pretrained("Gustavosta/MagicPrompt-Stable-Diffusion")
         self.text_refine_gpt2_pipe = pipeline("text-generation", model=self.text_refine_model,
@@ -166,13 +166,13 @@ class ImageCaptioning:
         self.device = device
         self.processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
         self.model = BlipForConditionalGeneration.from_pretrained(
-            "Salesforce/blip-image-captioning-base").to(self.device)
+            "Salesforce/blip-image-captioning-base", torch_dtype=torch.float16).to(self.device)
 
     @prompts(name="Get Photo Description",
              description="useful when you want to know what is inside the photo. receives image_path as input. "
                          "The input to this tool should be a string, representing the image_path. ")
     def inference(self, image_path):
-        inputs = self.processor(Image.open(image_path), return_tensors="pt").to(self.device)
+        inputs = self.processor(Image.open(image_path), return_tensors="pt").to(self.device, torch.float16)
         out = self.model.generate(**inputs)
         captions = self.processor.decode(out[0], skip_special_tokens=True)
         print(f"\nProcessed ImageCaptioning, Input Image: {image_path}, Output Text: {captions}")
@@ -206,9 +206,9 @@ class Image2Canny:
 class CannyText2Image:
     def __init__(self, device):
         print("Initializing CannyText2Image to %s" % device)
-        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-canny")
+        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-canny", torch_dtype=torch.float16)
         self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None)
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None, torch_dtype=torch.float16)
         self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
         self.pipe.to(device)
         self.seed = -1
@@ -685,7 +685,7 @@ class VisualQuestionAnswering:
         print("Initializing VisualQuestionAnswering to %s" % device)
         self.device = device
         self.processor = BlipProcessor.from_pretrained("Salesforce/blip-vqa-base")
-        self.model = BlipForQuestionAnswering.from_pretrained("Salesforce/blip-vqa-base").to(self.device)
+        self.model = BlipForQuestionAnswering.from_pretrained("Salesforce/blip-vqa-base", torch_dtype=torch.float16).to(self.device)
 
     @prompts(name="Answer Question About The Image",
              description="useful when you need an answer for a question based on an image. "
@@ -694,7 +694,7 @@ class VisualQuestionAnswering:
     def inference(self, inputs):
         image_path, question = inputs.split(",")
         raw_image = Image.open(image_path).convert('RGB')
-        inputs = self.processor(raw_image, question, return_tensors="pt").to(self.device)
+        inputs = self.processor(raw_image, question, return_tensors="pt").to(self.device, torch.float16)
         out = self.model.generate(**inputs)
         answer = self.processor.decode(out[0], skip_special_tokens=True)
         print(f"\nProcessed VisualQuestionAnswering, Input Image: {image_path}, Input Question: {question}, "
