@@ -70,7 +70,7 @@ def cut_dialogue_history(history_memory, keep_last_n_words=500):
 class ConversationBot:
     def __init__(self):
         print("Initializing VisualChatGPT")
-        self.llm = OpenAI(temperature=0, openai_api_key="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")
+        self.llm = OpenAI(temperature=0)
         self.edit = ImageEditing(device="cuda:0")
         self.i2t = ImageCaptioning(device="cuda:0")
         self.t2i = T2I(device="cuda:0")
@@ -206,6 +206,9 @@ class ConversationBot:
         print("Outputs:", state)
         return state, state, txt + ' ' + image_filename + ' '
 
+    def change_api_key(self, user_token):
+        self.llm.openai_api_key = user_token
+
 bot = ConversationBot()
 with gr.Blocks(css="#chatbot .overflow-y-auto{height:500px}") as demo:
     with gr.Row():
@@ -237,6 +240,6 @@ with gr.Blocks(css="#chatbot .overflow-y-auto{height:500px}") as demo:
     clear.click(bot.memory.clear)
     clear.click(lambda: [], None, chatbot)
     clear.click(lambda: [], None, state)
-
+    openai_api_key_textbox.change(bot.change_api_key, [openai_api_key_textbox], [])
 
     demo.launch(server_name="0.0.0.0", server_port=7860)
