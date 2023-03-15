@@ -144,13 +144,13 @@ bot = ConversationBot({'Text2Image':'cuda:0',
                        'CannyText2Image':'cuda:0',
                        'InstructPix2Pix':'cuda:0'})
 
-with gr.Blocks(css="#chatbot .overflow-y-auto{height:500px}") as demo:
+with gr.Blocks(css="#chatbot {overflow:auto; height:500px;}") as demo:
     with gr.Row():
         gr.Markdown("<h3><center>Visual ChatGPT</center></h3>")
 
     with gr.Row():
         openai_api_key_textbox = gr.Textbox(
-            placeholder="Paste your OpenAI API key here to start Visual ChatGPT(sk-...)",
+            placeholder="Paste your OpenAI API key here to start Visual ChatGPT(sk-...) and press Enter ↵️",
             show_label=False,
             lines=1,
             type="password",
@@ -162,10 +162,12 @@ with gr.Blocks(css="#chatbot .overflow-y-auto{height:500px}") as demo:
     with gr.Row(visible=False) as input_raws:
         with gr.Column(scale=0.7):
             txt = gr.Textbox(show_label=False, placeholder="Enter text and press enter, or upload an image").style(container=False)
-        with gr.Column(scale=0.15, min_width=0):
-            clear = gr.Button("Clear️")
-        with gr.Column(scale=0.15, min_width=0):
-            btn = gr.UploadButton("Upload", file_types=["image"])
+        with gr.Column(scale=0.10, min_width=0):
+            run = gr.Button("🏃‍♂️Run")
+        with gr.Column(scale=0.10, min_width=0):
+            clear = gr.Button("🔄Clear️")
+        with gr.Column(scale=0.10, min_width=0):
+            btn = gr.UploadButton("🖼️Upload", file_types=["image"])
 
     gr.Examples(
         examples=["Generate a figure of a cat running in the garden",
@@ -183,9 +185,11 @@ with gr.Blocks(css="#chatbot .overflow-y-auto{height:500px}") as demo:
     openai_api_key_textbox.submit(bot.init_agent, [openai_api_key_textbox], [input_raws])
     txt.submit(bot.run_text, [txt, state], [chatbot, state])
     txt.submit(lambda: "", None, txt)
+    run.click(bot.run_text, [txt, state], [chatbot, state])
+    run.click(lambda: "", None, txt)
     btn.upload(bot.run_image, [btn, state, txt], [chatbot, state, txt])
     clear.click(bot.memory.clear)
     clear.click(lambda: [], None, chatbot)
     clear.click(lambda: [], None, state)
 
-    demo.launch(server_name="0.0.0.0", server_port=7860)
+    demo.queue(concurrency_count=10).launch(server_name="0.0.0.0", server_port=7860)
