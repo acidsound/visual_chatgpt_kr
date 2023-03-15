@@ -52,18 +52,19 @@ import gradio as gr
 
 
 def cut_dialogue_history(history_memory, keep_last_n_words=400):
+    if history_memory is None or len(history_memory) == 0:
+        return history_memory
     tokens = history_memory.split()
     n_tokens = len(tokens)
-    print(f"hitory_memory:{history_memory}, n_tokens: {n_tokens}")
+    print(f"history_memory:{history_memory}, n_tokens: {n_tokens}")
     if n_tokens < keep_last_n_words:
         return history_memory
-    else:
-        paragraphs = history_memory.split('\n')
-        last_n_tokens = n_tokens
-        while last_n_tokens >= keep_last_n_words:
-            last_n_tokens = last_n_tokens - len(paragraphs[0].split(' '))
-            paragraphs = paragraphs[1:]
-        return '\n' + '\n'.join(paragraphs)
+    paragraphs = history_memory.split('\n')
+    last_n_tokens = n_tokens
+    while last_n_tokens >= keep_last_n_words:
+        last_n_tokens -= len(paragraphs[0].split(' '))
+        paragraphs = paragraphs[1:]
+    return '\n' + '\n'.join(paragraphs)
 
 
 class ConversationBot:
@@ -74,7 +75,6 @@ class ConversationBot:
             raise ValueError("You have to load ImageCaptioning as a basic function for VisualChatGPT")
 
         self.memory = ConversationBufferMemory(memory_key="chat_history", output_key='output')
-
         self.models = dict()
         for class_name, device in load_dict.items():
             self.models[class_name] = globals()[class_name](device=device)
@@ -85,7 +85,6 @@ class ConversationBot:
                 if e.startswith('inference'):
                     func = getattr(instance, e)
                     self.tools.append(Tool(name=func.name, description=func.description, func=func))
-
 
     def run_text(self, text, state):
         self.agent.memory.buffer = cut_dialogue_history(self.agent.memory.buffer, keep_last_n_words=500)
@@ -98,7 +97,7 @@ class ConversationBot:
         return state, state
 
     def run_image(self, image, state, txt):
-        image_filename = os.path.join('image', str(uuid.uuid4())[0:8] + ".png")
+        image_filename = os.path.join('image', f"{str(uuid.uuid4())[:8]}.png")
         print("======>Auto Resize Image...")
         img = Image.open(image.name)
         width, height = img.size
@@ -111,17 +110,13 @@ class ConversationBot:
         img.save(image_filename, "PNG")
         print(f"Resize image form {width}x{height} to {width_new}x{height_new}")
         description = self.models['ImageCaptioning'].inference(image_filename)
-        Human_prompt = "\nHuman: provide a figure named {}. The description is: {}. " \
-                       "This information helps you to understand this image, " \
-                       "but you should use tools to finish following tasks, " \
-                       "rather than directly imagine from my description. If you understand, say \"Received\". \n".format(
-            image_filename, description)
+        Human_prompt = f'\nHuman: provide a figure named {image_filename}. The description is: {description}. This information helps you to understand this image, but you should use tools to finish following tasks, rather than directly imagine from my description. If you understand, say \"Received\". \n'
         AI_prompt = "Received.  "
         self.agent.memory.buffer = self.agent.memory.buffer + Human_prompt + 'AI: ' + AI_prompt
         state = state + [(f"![](/file={image_filename})*{image_filename}*", AI_prompt)]
         print(f"\nProcessed run_image, Input image: {image_filename}\nCurrent state: {state}\n"
               f"Current Memory: {self.agent.memory.buffer}")
-        return state, state, txt + ' ' + image_filename + ' '
+        return state, state, f'{txt} {image_filename} '
 
     def init_agent(self, openai_api_key):
         self.llm = OpenAI(temperature=0, openai_api_key=openai_api_key)
@@ -136,17 +131,25 @@ class ConversationBot:
 
         return gr.update(visible = True)
 
-bot = ConversationBot({'Text2Image':'cuda:0',
-                       'ImageCaptioning':'cuda:0',
+bot = ConversationBot({'Text2Image': 'cuda:0',
+                       'ImageCaptioning': 'cuda:0',
                        'ImageEditing': 'cuda:0',
                        'VisualQuestionAnswering': 'cuda:0',
-                       'Image2Canny':'cpu',
-                       'CannyText2Image':'cuda:0',
-                       'InstructPix2Pix':'cuda:0'})
+                       'Image2Canny': 'cpu',
+                       'CannyText2Image': 'cuda:0',
+                       'InstructPix2Pix': 'cuda:0',
+                       'Image2Depth': 'cpu',
+                       'DepthText2Image': 'cuda:0',
+                       })
 
 with gr.Blocks(css="#chatbot {overflow:auto; height:500px;}") as demo:
     with gr.Row():
         gr.Markdown("<h3><center>Visual ChatGPT</center></h3>")
+        gr.Markdown(
+            """This is a demo to the work [Visual ChatGPT: Talking, Drawing and Editing with Visual Foundation Models](https://github.com/microsoft/visual-chatgpt).<br>
+            This space connects ChatGPT and a series of Visual Foundation Models to enable sending and receiving images during chatting.<br>  
+            """
+        )
 
     with gr.Row():
         openai_api_key_textbox = gr.Textbox(
@@ -177,9 +180,17 @@ with gr.Blocks(css="#chatbot {overflow:auto; height:500px;}") as demo:
                   "Can you use this canny image to generate an oil painting of a dog",
                   "Make it like water-color painting",
                   "What is the background color",
-                  "Describe this image"],
+                  "Describe this image",
+                  "please detect the depth of this image",
+                  "Can you use this depth image to generate a cute dog",
+                  ],
         inputs=txt
     )
+
+    gr.HTML('''<br><br><br><center>You can duplicate this Space to skip the queue:
+                <a href="https://huggingface.co/spaces/microsoft/visual_chatgpt?duplicate=true"><img src="https://bit.ly/3gLdBN6" alt="Duplicate Space"></a><br>
+            </center>''')
+
 
 
     openai_api_key_textbox.submit(bot.init_agent, [openai_api_key_textbox], [input_raws])

@@ -44,7 +44,7 @@ def get_new_image_name(org_img_name, func_name="update"):
 
 class MaskFormer:
     def __init__(self, device):
-        print("Initializing MaskFormer to %s" % device)
+        print(f"Initializing MaskFormer to {device}")
         self.device = device
         self.processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
         self.model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined").to(device)
@@ -74,24 +74,27 @@ class MaskFormer:
 
 class ImageEditing:
     def __init__(self, device):
-        print("Initializing ImageEditing to %s" % device)
+        print(f"Initializing ImageEditing to {device}")
         self.device = device
         self.mask_former = MaskFormer(device=self.device)
-        self.inpaint = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting", revision="fp16", torch_dtype=torch.float16).to(device)
+        self.revision = 'fp16' if 'cuda' in device else None
+        self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
+        self.inpaint = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting", revision=self.revision, torch_dtype=self.torch_dtype).to(device)
 
     @prompts(name="Remove Something From The Photo",
              description="useful when you want to remove and object or something from the photo "
                          "from its description or location. "
-                         "The input to this tool should be a comma seperated string of two, "
+                         "The input to this tool should be a comma separated string of two, "
                          "representing the image_path and the object need to be removed. ")
     def inference_remove(self, inputs):
-        image_path, to_be_removed_txt = inputs.split(",")
+        image_path, to_be_removed_txt = inputs.split(",")[0], ','.join(inputs.split(',')[1:])
         return self.inference_replace(f"{image_path},{to_be_removed_txt},background")
 
     @prompts(name="Replace Something From The Photo",
              description="useful when you want to replace an object from the object description or "
                          "location with another object from its description. "
-                         "The input to this tool should be a comma seperated string of three, "
+                         "The input to this tool should be a comma separated string of three, "
                          "representing the image_path, the object to be replaced, the object to be replaced with ")
     def inference_replace(self, inputs):
         image_path, to_be_replaced_txt, replace_with_txt = inputs.split(",")
@@ -111,16 +114,18 @@ class ImageEditing:
 
 class InstructPix2Pix:
     def __init__(self, device):
-        print("Initializing InstructPix2Pix to %s" % device)
+        print(f"Initializing InstructPix2Pix to {device}")
         self.device = device
-        self.pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained("timbrooks/instruct-pix2pix", torch_dtype=torch.float16,
-                                                                           safety_checker=None).to(device)
+        self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
+        self.pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained("timbrooks/instruct-pix2pix",
+                                                                           safety_checker=None,
+                                                                           torch_dtype=self.torch_dtype).to(device)
         self.pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(self.pipe.scheduler.config)
 
     @prompts(name="Instruct Image Using Text",
              description="useful when you want to the style of the image to be like the text. "
                          "like: make it look like a painting. or make it like a robot. "
-                         "The input to this tool should be a comma seperated string of two, "
+                         "The input to this tool should be a comma separated string of two, "
                          "representing the image_path and the text. ")
     def inference(self, inputs):
         """Change style of image."""
@@ -163,17 +168,18 @@ class Text2Image:
 
 class ImageCaptioning:
     def __init__(self, device):
-        print("Initializing ImageCaptioning to %s" % device)
+        print(f"Initializing ImageCaptioning to {device}")
         self.device = device
+        self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
         self.processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
         self.model = BlipForConditionalGeneration.from_pretrained(
-            "Salesforce/blip-image-captioning-base", torch_dtype=torch.float16).to(self.device)
+            "Salesforce/blip-image-captioning-base", torch_dtype=self.torch_dtype).to(self.device)
 
     @prompts(name="Get Photo Description",
              description="useful when you want to know what is inside the photo. receives image_path as input. "
                          "The input to this tool should be a string, representing the image_path. ")
     def inference(self, image_path):
-        inputs = self.processor(Image.open(image_path), return_tensors="pt").to(self.device, torch.float16)
+        inputs = self.processor(Image.open(image_path), return_tensors="pt").to(self.device, self.torch_dtype)
         out = self.model.generate(**inputs)
         captions = self.processor.decode(out[0], skip_special_tokens=True)
         print(f"\nProcessed ImageCaptioning, Input Image: {image_path}, Output Text: {captions}")
@@ -206,29 +212,32 @@ class Image2Canny:
 
 class CannyText2Image:
     def __init__(self, device):
-        print("Initializing CannyText2Image to %s" % device)
-        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-canny", torch_dtype=torch.float16)
+        print(f"Initializing CannyText2Image to {device}")
+        self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
+        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-canny",
+                                                          torch_dtype=self.torch_dtype)
         self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None, torch_dtype=torch.float16)
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None,
+            torch_dtype=self.torch_dtype)
         self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
         self.pipe.to(device)
         self.seed = -1
         self.a_prompt = 'best quality, extremely detailed'
         self.n_prompt = 'longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, ' \
-                        'fewer digits, cropped, worst quality, low quality'
+                            'fewer digits, cropped, worst quality, low quality'
 
     @prompts(name="Generate Image Condition On Canny Image",
-             description="useful when you want to generate a new real image from both the user desciption and a canny image."
+             description="useful when you want to generate a new real image from both the user description and a canny image."
                          " like: generate a real image of a object or something from this canny image,"
                          " or generate a new real image of a object or something from this edge image. "
-                         "The input to this tool should be a comma seperated string of two, "
+                         "The input to this tool should be a comma separated string of two, "
                          "representing the image_path and the user description. ")
     def inference(self, inputs):
         image_path, instruct_text = inputs.split(",")[0], ','.join(inputs.split(',')[1:])
         image = Image.open(image_path)
         self.seed = random.randint(0, 65535)
         seed_everything(self.seed)
-        prompt = instruct_text + ', ' + self.a_prompt
+        prompt = f'{instruct_text}, {self.a_prompt}'
         image = self.pipe(prompt, image, num_inference_steps=20, eta=0.0, negative_prompt=self.n_prompt,
                           guidance_scale=9.0).images[0]
         updated_image_path = get_new_image_name(image_path, func_name="canny2image")
@@ -246,7 +255,7 @@ class Image2Line:
     @prompts(name="Line Detection On Image",
              description="useful when you want to detect the straight line of the image. "
                          "like: detect the straight lines of this image, or straight line detection on image, "
-                         "or peform straight line detection on this image, or detect the straight line image of this image. "
+                         "or perform straight line detection on this image, or detect the straight line image of this image. "
                          "The input to this tool should be a string, representing the image_path")
     def inference(self, inputs):
         image = Image.open(inputs)
@@ -259,31 +268,34 @@ class Image2Line:
 
 class LineText2Image:
     def __init__(self, device):
-        print("Initializing LineText2Image to %s" % device)
-        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-mlsd")
+        print(f"Initializing LineText2Image to {device}")
+        self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
+        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-mlsd",
+                                                          torch_dtype=self.torch_dtype)
         self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None,
+            torch_dtype=self.torch_dtype
         )
         self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
         self.pipe.to(device)
         self.seed = -1
         self.a_prompt = 'best quality, extremely detailed'
         self.n_prompt = 'longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, ' \
-                        'fewer digits, cropped, worst quality, low quality'
+                            'fewer digits, cropped, worst quality, low quality'
 
     @prompts(name="Generate Image Condition On Line Image",
-             description="useful when you want to generate a new real image from both the user desciption "
+             description="useful when you want to generate a new real image from both the user description "
                          "and a straight line image. "
                          "like: generate a real image of a object or something from this straight line image, "
                          "or generate a new real image of a object or something from this straight lines. "
-                         "The input to this tool should be a comma seperated string of two, "
+                         "The input to this tool should be a comma separated string of two, "
                          "representing the image_path and the user description. ")
     def inference(self, inputs):
         image_path, instruct_text = inputs.split(",")[0], ','.join(inputs.split(',')[1:])
         image = Image.open(image_path)
         self.seed = random.randint(0, 65535)
         seed_everything(self.seed)
-        prompt = instruct_text + ', ' + self.a_prompt
+        prompt = f'{instruct_text}, {self.a_prompt}'
         image = self.pipe(prompt, image, num_inference_steps=20, eta=0.0, negative_prompt=self.n_prompt,
                           guidance_scale=9.0).images[0]
         updated_image_path = get_new_image_name(image_path, func_name="line2image")
@@ -301,7 +313,7 @@ class Image2Hed:
     @prompts(name="Hed Detection On Image",
              description="useful when you want to detect the soft hed boundary of the image. "
                          "like: detect the soft hed boundary of this image, or hed boundary detection on image, "
-                         "or peform hed boundary detection on this image, or detect soft hed boundary image of this image. "
+                         "or perform hed boundary detection on this image, or detect soft hed boundary image of this image. "
                          "The input to this tool should be a string, representing the image_path")
     def inference(self, inputs):
         image = Image.open(inputs)
@@ -314,31 +326,34 @@ class Image2Hed:
 
 class HedText2Image:
     def __init__(self, device):
-        print("Initializing HedText2Image to %s" % device)
-        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-hed")
+        print(f"Initializing HedText2Image to {device}")
+        self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
+        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-hed",
+                                                          torch_dtype=self.torch_dtype)
         self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None,
+            torch_dtype=self.torch_dtype
         )
         self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
         self.pipe.to(device)
         self.seed = -1
         self.a_prompt = 'best quality, extremely detailed'
         self.n_prompt = 'longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, ' \
-                        'fewer digits, cropped, worst quality, low quality'
+                            'fewer digits, cropped, worst quality, low quality'
 
     @prompts(name="Generate Image Condition On Soft Hed Boundary Image",
-             description="useful when you want to generate a new real image from both the user desciption "
+             description="useful when you want to generate a new real image from both the user description "
                          "and a soft hed boundary image. "
                          "like: generate a real image of a object or something from this soft hed boundary image, "
                          "or generate a new real image of a object or something from this hed boundary. "
-                         "The input to this tool should be a comma seperated string of two, "
+                         "The input to this tool should be a comma separated string of two, "
                          "representing the image_path and the user description")
     def inference(self, inputs):
         image_path, instruct_text = inputs.split(",")[0], ','.join(inputs.split(',')[1:])
         image = Image.open(image_path)
         self.seed = random.randint(0, 65535)
         seed_everything(self.seed)
-        prompt = instruct_text + ', ' + self.a_prompt
+        prompt = f'{instruct_text}, {self.a_prompt}'
         image = self.pipe(prompt, image, num_inference_steps=20, eta=0.0, negative_prompt=self.n_prompt,
                           guidance_scale=9.0).images[0]
         updated_image_path = get_new_image_name(image_path, func_name="hed2image")
@@ -369,29 +384,32 @@ class Image2Scribble:
 
 class ScribbleText2Image:
     def __init__(self, device):
-        print("Initializing ScribbleText2Image to %s" % device)
-        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-scribble")
+        print(f"Initializing ScribbleText2Image to {device}")
+        self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
+        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-scribble",
+                                                          torch_dtype=self.torch_dtype)
         self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None,
+            torch_dtype=self.torch_dtype
         )
         self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
         self.pipe.to(device)
         self.seed = -1
         self.a_prompt = 'best quality, extremely detailed'
         self.n_prompt = 'longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, ' \
-                        'fewer digits, cropped, worst quality, low quality'
+                            'fewer digits, cropped, worst quality, low quality'
 
     @prompts(name="Generate Image Condition On Sketch Image",
-             description="useful when you want to generate a new real image from both the user desciption and "
+             description="useful when you want to generate a new real image from both the user description and "
                          "a scribble image or a sketch image. "
-                         "The input to this tool should be a comma seperated string of two, "
+                         "The input to this tool should be a comma separated string of two, "
                          "representing the image_path and the user description")
     def inference(self, inputs):
         image_path, instruct_text = inputs.split(",")[0], ','.join(inputs.split(',')[1:])
         image = Image.open(image_path)
         self.seed = random.randint(0, 65535)
         seed_everything(self.seed)
-        prompt = instruct_text + ', ' + self.a_prompt
+        prompt = f'{instruct_text}, {self.a_prompt}'
         image = self.pipe(prompt, image, num_inference_steps=20, eta=0.0, negative_prompt=self.n_prompt,
                           guidance_scale=9.0).images[0]
         updated_image_path = get_new_image_name(image_path, func_name="scribble2image")
@@ -421,10 +439,13 @@ class Image2Pose:
 
 class PoseText2Image:
     def __init__(self, device):
-        print("Initializing PoseText2Image to %s" % device)
-        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-openpose")
+        print(f"Initializing PoseText2Image to {device}")
+        self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
+        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-openpose",
+                                                          torch_dtype=self.torch_dtype)
         self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None)
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None,
+            torch_dtype=self.torch_dtype)
         self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
         self.pipe.to(device)
         self.num_inference_steps = 20
@@ -432,21 +453,21 @@ class PoseText2Image:
         self.unconditional_guidance_scale = 9.0
         self.a_prompt = 'best quality, extremely detailed'
         self.n_prompt = 'longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit,' \
-                        ' fewer digits, cropped, worst quality, low quality'
+                            ' fewer digits, cropped, worst quality, low quality'
 
     @prompts(name="Generate Image Condition On Pose Image",
-             description="useful when you want to generate a new real image from both the user desciption "
+             description="useful when you want to generate a new real image from both the user description "
                          "and a human pose image. "
                          "like: generate a real image of a human from this human pose image, "
                          "or generate a new real image of a human from this pose. "
-                         "The input to this tool should be a comma seperated string of two, "
+                         "The input to this tool should be a comma separated string of two, "
                          "representing the image_path and the user description")
     def inference(self, inputs):
         image_path, instruct_text = inputs.split(",")[0], ','.join(inputs.split(',')[1:])
         image = Image.open(image_path)
         self.seed = random.randint(0, 65535)
         seed_everything(self.seed)
-        prompt = instruct_text + ', ' + self.a_prompt
+        prompt = f'{instruct_text}, {self.a_prompt}'
         image = self.pipe(prompt, image, num_inference_steps=20, eta=0.0, negative_prompt=self.n_prompt,
                           guidance_scale=9.0).images[0]
         updated_image_path = get_new_image_name(image_path, func_name="pose2image")
@@ -503,7 +524,7 @@ class Image2Seg:
     @prompts(name="Segmentation On Image",
              description="useful when you want to detect segmentations of the image. "
                          "like: segment this image, or generate segmentations on this image, "
-                         "or peform segmentation on this image. "
+                         "or perform segmentation on this image. "
                          "The input to this tool should be a string, representing the image_path")
     def inference(self, inputs):
         image = Image.open(inputs)
@@ -525,29 +546,32 @@ class Image2Seg:
 
 class SegText2Image:
     def __init__(self, device):
-        print("Initializing SegText2Image to %s" % device)
-        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-seg")
+        print(f"Initializing SegText2Image to {device}")
+        self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
+        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-seg",
+                                                          torch_dtype=self.torch_dtype)
         self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None)
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None,
+            torch_dtype=self.torch_dtype)
         self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
         self.pipe.to(device)
         self.seed = -1
         self.a_prompt = 'best quality, extremely detailed'
         self.n_prompt = 'longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit,' \
-                        ' fewer digits, cropped, worst quality, low quality'
+                            ' fewer digits, cropped, worst quality, low quality'
 
     @prompts(name="Generate Image Condition On Segmentations",
-             description="useful when you want to generate a new real image from both the user desciption and segmentations. "
+             description="useful when you want to generate a new real image from both the user description and segmentations. "
                          "like: generate a real image of a object or something from this segmentation image, "
                          "or generate a new real image of a object or something from these segmentations. "
-                         "The input to this tool should be a comma seperated string of two, "
+                         "The input to this tool should be a comma separated string of two, "
                          "representing the image_path and the user description")
     def inference(self, inputs):
         image_path, instruct_text = inputs.split(",")[0], ','.join(inputs.split(',')[1:])
         image = Image.open(image_path)
         self.seed = random.randint(0, 65535)
         seed_everything(self.seed)
-        prompt = instruct_text + ', ' + self.a_prompt
+        prompt = f'{instruct_text}, {self.a_prompt}'
         image = self.pipe(prompt, image, num_inference_steps=20, eta=0.0, negative_prompt=self.n_prompt,
                           guidance_scale=9.0).images[0]
         updated_image_path = get_new_image_name(image_path, func_name="segment2image")
@@ -581,29 +605,32 @@ class Image2Depth:
 
 class DepthText2Image:
     def __init__(self, device):
-        print("Initializing DepthText2Image to %s" % device)
-        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-depth")
+        print(f"Initializing DepthText2Image to {device}")
+        self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
+        self.controlnet = ControlNetModel.from_pretrained(
+            "fusing/stable-diffusion-v1-5-controlnet-depth", torch_dtype=self.torch_dtype)
         self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None)
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None,
+            torch_dtype=self.torch_dtype)
         self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
         self.pipe.to(device)
         self.seed = -1
         self.a_prompt = 'best quality, extremely detailed'
         self.n_prompt = 'longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit,' \
-                        ' fewer digits, cropped, worst quality, low quality'
+                            ' fewer digits, cropped, worst quality, low quality'
 
     @prompts(name="Generate Image Condition On Depth",
-             description="useful when you want to generate a new real image from both the user desciption and depth image. "
+             description="useful when you want to generate a new real image from both the user description and depth image. "
                          "like: generate a real image of a object or something from this depth image, "
                          "or generate a new real image of a object or something from the depth map. "
-                         "The input to this tool should be a comma seperated string of two, "
+                         "The input to this tool should be a comma separated string of two, "
                          "representing the image_path and the user description")
     def inference(self, inputs):
         image_path, instruct_text = inputs.split(",")[0], ','.join(inputs.split(',')[1:])
         image = Image.open(image_path)
         self.seed = random.randint(0, 65535)
         seed_everything(self.seed)
-        prompt = instruct_text + ', ' + self.a_prompt
+        prompt = f'{instruct_text}, {self.a_prompt}'
         image = self.pipe(prompt, image, num_inference_steps=20, eta=0.0, negative_prompt=self.n_prompt,
                           guidance_scale=9.0).images[0]
         updated_image_path = get_new_image_name(image_path, func_name="depth2image")
@@ -649,29 +676,32 @@ class Image2Normal:
 
 class NormalText2Image:
     def __init__(self, device):
-        print("Initializing NormalText2Image to %s" % device)
-        self.controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-normal")
+        print(f"Initializing NormalText2Image to {device}")
+        self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
+        self.controlnet = ControlNetModel.from_pretrained(
+            "fusing/stable-diffusion-v1-5-controlnet-normal", torch_dtype=self.torch_dtype)
         self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None)
+            "runwayml/stable-diffusion-v1-5", controlnet=self.controlnet, safety_checker=None,
+            torch_dtype=self.torch_dtype)
         self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
         self.pipe.to(device)
         self.seed = -1
         self.a_prompt = 'best quality, extremely detailed'
         self.n_prompt = 'longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit,' \
-                        ' fewer digits, cropped, worst quality, low quality'
+                            ' fewer digits, cropped, worst quality, low quality'
 
     @prompts(name="Generate Image Condition On Normal Map",
-             description="useful when you want to generate a new real image from both the user desciption and normal map. "
+             description="useful when you want to generate a new real image from both the user description and normal map. "
                          "like: generate a real image of a object or something from this normal map, "
                          "or generate a new real image of a object or something from the normal map. "
-                         "The input to this tool should be a comma seperated string of two, "
+                         "The input to this tool should be a comma separated string of two, "
                          "representing the image_path and the user description")
     def inference(self, inputs):
         image_path, instruct_text = inputs.split(",")[0], ','.join(inputs.split(',')[1:])
         image = Image.open(image_path)
         self.seed = random.randint(0, 65535)
         seed_everything(self.seed)
-        prompt = instruct_text + ', ' + self.a_prompt
+        prompt = f'{instruct_text}, {self.a_prompt}'
         image = self.pipe(prompt, image, num_inference_steps=20, eta=0.0, negative_prompt=self.n_prompt,
                           guidance_scale=9.0).images[0]
         updated_image_path = get_new_image_name(image_path, func_name="normal2image")
@@ -683,19 +713,21 @@ class NormalText2Image:
 
 class VisualQuestionAnswering:
     def __init__(self, device):
-        print("Initializing VisualQuestionAnswering to %s" % device)
+        print(f"Initializing VisualQuestionAnswering to {device}")
+        self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
         self.device = device
         self.processor = BlipProcessor.from_pretrained("Salesforce/blip-vqa-base")
-        self.model = BlipForQuestionAnswering.from_pretrained("Salesforce/blip-vqa-base", torch_dtype=torch.float16).to(self.device)
+        self.model = BlipForQuestionAnswering.from_pretrained(
+            "Salesforce/blip-vqa-base", torch_dtype=self.torch_dtype).to(self.device)
 
     @prompts(name="Answer Question About The Image",
              description="useful when you need an answer for a question based on an image. "
                          "like: what is the background color of the last image, how many cats in this figure, what is in this figure. "
-                         "The input to this tool should be a comma seperated string of two, representing the image_path and the question")
+                         "The input to this tool should be a comma separated string of two, representing the image_path and the question")
     def inference(self, inputs):
-        image_path, question = inputs.split(",")
+        image_path, question = inputs.split(",")[0], ','.join(inputs.split(',')[1:])
         raw_image = Image.open(image_path).convert('RGB')
-        inputs = self.processor(raw_image, question, return_tensors="pt").to(self.device, torch.float16)
+        inputs = self.processor(raw_image, question, return_tensors="pt").to(self.device, self.torch_dtype)
         out = self.model.generate(**inputs)
         answer = self.processor.decode(out[0], skip_special_tokens=True)
         print(f"\nProcessed VisualQuestionAnswering, Input Image: {image_path}, Input Question: {question}, "
