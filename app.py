@@ -147,7 +147,7 @@ with gr.Blocks(css="#chatbot {overflow:auto; height:500px;}") as demo:
     gr.Markdown(
         """This is a demo to the work [Visual ChatGPT: Talking, Drawing and Editing with Visual Foundation Models](https://github.com/microsoft/visual-chatgpt).<br>
         This space connects ChatGPT and a series of Visual Foundation Models to enable sending and receiving images during chatting.<br>  
-        This space currently only supports English.<br>
+        This space currently only supports English (目前只支持英文对话, 中文正在开发中).<br>
         """
     )
 
