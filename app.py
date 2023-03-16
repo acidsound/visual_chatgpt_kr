@@ -143,13 +143,13 @@ bot = ConversationBot({'Text2Image': 'cuda:0',
                        })
 
 with gr.Blocks(css="#chatbot {overflow:auto; height:500px;}") as demo:
-    with gr.Row():
-        gr.Markdown("<h3><center>Visual ChatGPT</center></h3>")
-        gr.Markdown(
-            """This is a demo to the work [Visual ChatGPT: Talking, Drawing and Editing with Visual Foundation Models](https://github.com/microsoft/visual-chatgpt).<br>
-            This space connects ChatGPT and a series of Visual Foundation Models to enable sending and receiving images during chatting.<br>  
-            """
-        )
+    gr.Markdown("<h3><center>Visual ChatGPT</center></h3>")
+    gr.Markdown(
+        """This is a demo to the work [Visual ChatGPT: Talking, Drawing and Editing with Visual Foundation Models](https://github.com/microsoft/visual-chatgpt).<br>
+        This space connects ChatGPT and a series of Visual Foundation Models to enable sending and receiving images during chatting.<br>  
+        This space currently only supports English.<br>
+        """
+    )
 
     with gr.Row():
         openai_api_key_textbox = gr.Textbox(
