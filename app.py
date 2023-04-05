@@ -203,4 +203,4 @@ with gr.Blocks(css="#chatbot {overflow:auto; height:500px;}") as demo:
     clear.click(lambda: [], None, chatbot)
     clear.click(lambda: [], None, state)
 
-    demo.queue(concurrency_count=10).launch(server_name="0.0.0.0", server_port=7860)
+demo.queue(concurrency_count=10).launch(server_name="0.0.0.0", server_port=7860)
