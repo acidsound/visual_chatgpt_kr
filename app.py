@@ -42,6 +42,51 @@ Since Visual ChatGPT is a text language model, Visual ChatGPT must use tools to 
 The thoughts and observations are only visible for Visual ChatGPT, Visual ChatGPT should remember to repeat important information in the final response for Human. 
 Thought: Do I need to use a tool? {agent_scratchpad}"""
 
+VISUAL_CHATGPT_PREFIX_CN = """Visual ChatGPT 旨在能够协助完成范围广泛的文本和视觉相关任务，从回答简单的问题到提供对广泛主题的深入解释和讨论。 Visual ChatGPT 能够根据收到的输入生成类似人类的文本，使其能够进行听起来自然的对话，并提供连贯且与手头主题相关的响应。
+
+Visual ChatGPT 能够处理和理解大量文本和图像。作为一种语言模型，Visual ChatGPT 不能直接读取图像，但它有一系列工具来完成不同的视觉任务。每张图片都会有一个文件名，格式为“image/xxx.png”，Visual ChatGPT可以调用不同的工具来间接理解图片。在谈论图片时，Visual ChatGPT 对文件名的要求非常严格，绝不会伪造不存在的文件。在使用工具生成新的图像文件时，Visual ChatGPT也知道图像可能与用户需求不一样，会使用其他视觉问答工具或描述工具来观察真实图像。 Visual ChatGPT 能够按顺序使用工具，并且忠于工具观察输出，而不是伪造图像内容和图像文件名。如果生成新图像，它将记得提供上次工具观察的文件名。
+
+Human 可能会向 Visual ChatGPT 提供带有描述的新图形。描述帮助 Visual ChatGPT 理解这个图像，但 Visual ChatGPT 应该使用工具来完成以下任务，而不是直接从描述中想象。有些工具将会返回英文描述，但你对用户的聊天应当采用中文。
+
+总的来说，Visual ChatGPT 是一个强大的可视化对话辅助工具，可以帮助处理范围广泛的任务，并提供关于范围广泛的主题的有价值的见解和信息。
+
+工具列表:
+------
+
+Visual ChatGPT 可以使用这些工具:"""
+
+VISUAL_CHATGPT_FORMAT_INSTRUCTIONS_CN = """用户使用中文和你进行聊天，但是工具的参数应当使用英文。如果要调用工具，你必须遵循如下格式:
+
+```
+Thought: Do I need to use a tool? Yes
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+```
+
+当你不再需要继续调用工具，而是对观察结果进行总结回复时，你必须使用如下格式：
+
+
+```
+Thought: Do I need to use a tool? No
+{ai_prefix}: [your response here]
+```
+"""
+
+VISUAL_CHATGPT_SUFFIX_CN = """你对文件名的正确性非常严格，而且永远不会伪造不存在的文件。
+
+开始!
+
+因为Visual ChatGPT是一个文本语言模型，必须使用工具去观察图片而不是依靠想象。
+推理想法和观察结果只对Visual ChatGPT可见，需要记得在最终回复时把重要的信息重复给用户，你只能给用户返回中文句子。我们一步一步思考。在你使用工具时，工具的参数只能是英文。
+
+聊天历史:
+{chat_history}
+
+新输入: {input}
+Thought: Do I need to use a tool? {agent_scratchpad}
+"""
+
 from visual_foundation_models import *
 from langchain.agents.initialize import initialize_agent
 from langchain.agents.tools import Tool
@@ -74,21 +119,31 @@ class ConversationBot:
         if 'ImageCaptioning' not in load_dict:
             raise ValueError("You have to load ImageCaptioning as a basic function for VisualChatGPT")
 
-        self.memory = ConversationBufferMemory(memory_key="chat_history", output_key='output')
-        self.models = dict()
+        self.models = {}
+        # Load Basic Foundation Models
         for class_name, device in load_dict.items():
             self.models[class_name] = globals()[class_name](device=device)
 
+        # Load Template Foundation Models
+        for class_name, module in globals().items():
+            if getattr(module, 'template_model', False):
+                template_required_names = {k for k in inspect.signature(module.__init__).parameters.keys() if
+                                           k != 'self'}
+                loaded_names = set([type(e).__name__ for e in self.models.values()])
+                if template_required_names.issubset(loaded_names):
+                    self.models[class_name] = globals()[class_name](
+                        **{name: self.models[name] for name in template_required_names})
         self.tools = []
-        for class_name, instance in self.models.items():
+        for instance in self.models.values():
             for e in dir(instance):
                 if e.startswith('inference'):
                     func = getattr(instance, e)
                     self.tools.append(Tool(name=func.name, description=func.description, func=func))
+        self.memory = ConversationBufferMemory(memory_key="chat_history", output_key='output')
 
     def run_text(self, text, state):
         self.agent.memory.buffer = cut_dialogue_history(self.agent.memory.buffer, keep_last_n_words=500)
-        res = self.agent({"input": text})
+        res = self.agent({"input": text.strip()})
         res['output'] = res['output'].replace("\\", "/")
         response = re.sub('(image/\S*png)', lambda m: f'![](/file={m.group(0)})*{m.group(0)}*', res['output'])
         state = state + [(text, response)]
@@ -118,7 +173,16 @@ class ConversationBot:
               f"Current Memory: {self.agent.memory.buffer}")
         return state, state, f'{txt} {image_filename} '
 
-    def init_agent(self, openai_api_key):
+    def init_agent(self, openai_api_key, lang):
+        self.memory.clear()
+        if lang=='English':
+            PREFIX, FORMAT_INSTRUCTIONS, SUFFIX = VISUAL_CHATGPT_PREFIX, VISUAL_CHATGPT_FORMAT_INSTRUCTIONS, VISUAL_CHATGPT_SUFFIX
+            place = "Enter text and press enter, or upload an image"
+            label_clear = "Clear"
+        else:
+            PREFIX, FORMAT_INSTRUCTIONS, SUFFIX = VISUAL_CHATGPT_PREFIX_CN, VISUAL_CHATGPT_FORMAT_INSTRUCTIONS_CN, VISUAL_CHATGPT_SUFFIX_CN
+            place = "输入文字并回车，或者上传图片"
+            label_clear = "清除"
         self.llm = OpenAI(temperature=0, openai_api_key=openai_api_key)
         self.agent = initialize_agent(
             self.tools,
@@ -127,7 +191,7 @@ class ConversationBot:
             verbose=True,
             memory=self.memory,
             return_intermediate_steps=True,
-            agent_kwargs={'prefix': VISUAL_CHATGPT_PREFIX, 'format_instructions': VISUAL_CHATGPT_FORMAT_INSTRUCTIONS, 'suffix': VISUAL_CHATGPT_SUFFIX}, )
+            agent_kwargs={'prefix': PREFIX, 'format_instructions': FORMAT_INSTRUCTIONS, 'suffix': SUFFIX}, )
 
         return gr.update(visible = True)
 
@@ -147,11 +211,11 @@ with gr.Blocks(css="#chatbot {overflow:auto; height:500px;}") as demo:
     gr.Markdown(
         """This is a demo to the work [Visual ChatGPT: Talking, Drawing and Editing with Visual Foundation Models](https://github.com/microsoft/visual-chatgpt).<br>
         This space connects ChatGPT and a series of Visual Foundation Models to enable sending and receiving images during chatting.<br>  
-        This space currently only supports English (目前只支持英文对话, 中文正在开发中).<br>
         """
     )
 
     with gr.Row():
+        lang = gr.Radio(choices=['Chinese', 'English'], value='English', label='Language')
         openai_api_key_textbox = gr.Textbox(
             placeholder="Paste your OpenAI API key here to start Visual ChatGPT(sk-...) and press Enter ↵️",
             show_label=False,
@@ -191,9 +255,7 @@ with gr.Blocks(css="#chatbot {overflow:auto; height:500px;}") as demo:
                 <a href="https://huggingface.co/spaces/microsoft/visual_chatgpt?duplicate=true"><img src="https://bit.ly/3gLdBN6" alt="Duplicate Space"></a><br>
             </center>''')
 
-
-
-    openai_api_key_textbox.submit(bot.init_agent, [openai_api_key_textbox], [input_raws])
+    openai_api_key_textbox.submit(bot.init_agent, [openai_api_key_textbox, lang], [input_raws])
     txt.submit(bot.run_text, [txt, state], [chatbot, state])
     txt.submit(lambda: "", None, txt)
     run.click(bot.run_text, [txt, state], [chatbot, state])
