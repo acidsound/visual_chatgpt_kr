@@ -94,6 +94,7 @@ from langchain.chains.conversation.memory import ConversationBufferMemory
 from langchain.llms.openai import OpenAI
 import re
 import gradio as gr
+import inspect
 
 
 def cut_dialogue_history(history_memory, keep_last_n_words=400):
