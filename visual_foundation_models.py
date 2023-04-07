@@ -843,7 +843,7 @@ class InfinityOutPainting:
             f'Prompt: {caption}')
         return caption
 
-    def resize_image(self, image, max_size=1000000, multiple=8):
+    def resize_image(self, image, max_size=100000, multiple=8):
         aspect_ratio = image.size[0] / image.size[1]
         new_width = int(math.sqrt(max_size * aspect_ratio))
         new_height = int(new_width / aspect_ratio)
