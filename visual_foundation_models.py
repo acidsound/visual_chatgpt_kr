@@ -796,7 +796,7 @@ class VisualQuestionAnswering:
 class InfinityOutPainting:
     template_model = True # Add this line to show this is a template model.
     def __init__(self, ImageCaptioning, ImageEditing, VisualQuestionAnswering):
-        self.llm = OpenAI(temperature=0)
+        # self.llm = OpenAI(temperature=0)
         self.ImageCaption = ImageCaptioning
         self.ImageEditing = ImageEditing
         self.ImageVQA = VisualQuestionAnswering
@@ -819,11 +819,11 @@ class InfinityOutPainting:
         BLIP_caption = self.ImageCaption.processor.decode(out[0], skip_special_tokens=True)
         return BLIP_caption
 
-    def check_prompt(self, prompt):
-        check = f"Here is a paragraph with adjectives. " \
-                f"{prompt} " \
-                f"Please change all plural forms in the adjectives to singular forms. "
-        return self.llm(check)
+    # def check_prompt(self, prompt):
+    #     check = f"Here is a paragraph with adjectives. " \
+    #             f"{prompt} " \
+    #             f"Please change all plural forms in the adjectives to singular forms. "
+    #     return self.llm(check)
 
     def get_imagine_caption(self, image, imagine):
         BLIP_caption = self.get_BLIP_caption(image)
@@ -836,8 +836,9 @@ class InfinityOutPainting:
                          f"You should make the painting as vivid and realistic as possible" \
                          f"You can not use words like painting or picture" \
                          f"and you should use no more than 50 words to describe it"
-        caption = self.llm(imagine_prompt) if imagine else BLIP_caption
-        caption = self.check_prompt(caption)
+        # caption = self.llm(imagine_prompt) if imagine else BLIP_caption
+        caption = BLIP_caption
+        # caption = self.check_prompt(caption)
         print(f'BLIP observation: {BLIP_caption}, ChatGPT imagine to {caption}') if imagine else print(
             f'Prompt: {caption}')
         return caption
