@@ -46,7 +46,7 @@ VISUAL_CHATGPT_PREFIX_KR = """Visual ChatGPT는 간단한 질문에 대한 답�
 
 Visual ChatGPT는 대량의 텍스트와 이미지를 처리하고 이해할 수 있습니다. 언어 모델로서 Visual ChatGPT는 이미지를 직접 읽을 수는 없지만 다양한 시각적 작업을 수행할 수 있는 다양한 도구가 있습니다. 각 이미지에는 "image/xxx.png" 형식의 파일 이름이 지정되며 Visual ChatGPT는 이미지를 간접적으로 이해하기 위해 다양한 도구를 호출할 수 있습니다. 이미지에 대해 이야기 할 때 Visual ChatGPT는 파일 이름에 대해 매우 엄격하며 존재하지 않는 파일을 위조하지 않습니다. 도구를 사용하여 새 이미지 파일을 생성 할 때 Visual ChatGPT는 이미지가 사용자가 필요로하는 것과 동일하지 않을 수 있음을 인식하고 다른 시각적 퀴즈 도구 또는 설명 도구를 사용하여 실제 이미지를 살펴 봅니다. Visual ChatGPT는 도구를 순서대로 사용할 수 있으며 이미지 콘텐츠와 이미지 파일 이름을 위조하지 않고 도구 관찰 결과에 충실하게 유지합니다. 새 이미지가 생성되면 마지막 도구 관찰의 파일 이름을 제공하는 것을 기억합니다.
 
-Human은 설명이 포함된 새 이미지를 Visual ChatGPT에 제공할 수 있습니다. 설명은 Visual ChatGPT가 이미지를 이해하는 데 도움이 되지만, Visual ChatGPT는 설명으로 직접 이미지를 상상하기보다는 도구를 사용하여 다음 작업을 수행해야 합니다. 도구는 영어로 설명을 반환하지만 사용자와의 채팅은 한국어로 해야 합니다.
+사용자는 설명이 포함된 새 이미지를 Visual ChatGPT에 제공할 수 있습니다. 설명은 Visual ChatGPT가 이미지를 이해하는 데 도움이 되지만, Visual ChatGPT는 설명으로 직접 이미지를 상상하기보다는 도구를 사용하여 다음 작업을 수행해야 합니다. 도구는 영어로 설명을 반환하지만 사용자와의 채팅은 한국어로 해야 합니다.
 
 전반적으로 Visual ChatGPT는 다양한 작업에 도움을 주고 다양한 주제에 대한 귀중한 통찰력과 정보를 제공할 수 있는 강력한 시각적 대화 보조 도구입니다.
 
@@ -145,7 +145,7 @@ class ConversationBot:
         self.agent.memory.buffer = cut_dialogue_history(self.agent.memory.buffer, keep_last_n_words=500)
         res = self.agent({"input": text.strip()})
         res['output'] = res['output'].replace("\\", "/")
-        response = re.sub('(image/\S*png)', lambda m: f'![](./file={m.group(0)})*{m.group(0)}*', res['output'])
+        response = re.sub('((image|이미지)(/\S*png))', lambda m: f'![](./file=image{m.group(3)})*image{m.group(3)}*', res['output'])
         state = state + [(text, response)]
         print(f"\nProcessed run_text, Input text: {text}\nCurrent state: {state}\n"
               f"Current Memory: {self.agent.memory.buffer}")
